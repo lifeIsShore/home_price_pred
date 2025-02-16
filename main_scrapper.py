@@ -53,7 +53,7 @@ def save_results(results, output_file):
 
 # Paths
 input_csv = r"C:\Users\ahmty\Desktop\projects\price-pred\german-postcodes.csv"
-output_dir = r"C:\Users\ahmty\Desktop\projects\price-pred\zip-codes-m2\db-postcodes"
+output_dir = r"C:\Users\ahmty\Desktop\projects\price-pred\zip-codes-m2"
 
 # Create or clear the output CSV file and write the header
 output_file = os.path.join(output_dir, 'scraped_prices.csv')
