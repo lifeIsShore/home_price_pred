@@ -18,13 +18,19 @@ zip_codes_file = r"C:\Users\ahmty\Desktop\projects\price-pred\rescrapping_datafr
 
 # Read ZIP codes from the merged file
 zip_codes = []
+city_names = []
 with open(zip_codes_file, mode="r", encoding="utf-8-sig") as file:
     reader = csv.reader(file)
-    next(reader, None)  # Skip header if present
-    zip_codes = [row[0] for row in reader]  # Read all ZIP codes
+    header = next(reader, None)  # Skip header if present
+    for row in reader:
+        zip_codes.append(row[0])  # Read all ZIP codes
+        if len(row) > 1:  # If the second column exists, get the city name
+            city_names.append(row[1])
+        else:
+            city_names.append(None)  # If no city, append None
 
 # Function to scrape prices for a given ZIP code
-def scrape_prices(zip_code):
+def scrape_prices(zip_code, city_name):
     options = webdriver.ChromeOptions()
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
@@ -57,7 +63,7 @@ def scrape_prices(zip_code):
         haus_min = price_elements[2].text.replace('€', '').replace('.', '').strip() if len(price_elements) > 2 else "N/A"
         haus_max = price_elements[3].text.replace('€', '').replace('.', '').strip() if len(price_elements) > 3 else "N/A"
 
-        return [zip_code, wohnung_min, wohnung_max, haus_min, haus_max]
+        return [zip_code, city_name, wohnung_min, wohnung_max, haus_min, haus_max]
 
     except Exception as e:
         logging.error(f"Error processing ZIP {zip_code}: {e}", exc_info=True)
@@ -77,7 +83,7 @@ max_threads = 5
 results_buffer = []
 
 with ThreadPoolExecutor(max_workers=max_threads) as executor:
-    futures = {executor.submit(scrape_prices, zip_code): zip_code for zip_code in zip_codes}
+    futures = {executor.submit(scrape_prices, zip_code, city_name): (zip_code, city_name) for zip_code, city_name in zip(zip_codes, city_names)}
     for future in as_completed(futures):
         result = future.result()
         if result:
@@ -87,7 +93,7 @@ with ThreadPoolExecutor(max_workers=max_threads) as executor:
 # Save the final scraped data
 with open(output_file, mode='w', newline='', encoding='utf-8-sig') as file:
     writer = csv.writer(file, delimiter=';')
-    writer.writerow(["Zip Code", "Wohnung Price min(€)", "Wohnung Price max(€)", "Haus Price min(€)", "Haus Price max(€)"])
+    writer.writerow(["Zip Code", "City", "Wohnung Price min(€)", "Wohnung Price max(€)", "Haus Price min(€)", "Haus Price max(€)"])
     writer.writerows(results_buffer)
 
 print(f"✅ Scraping completed! Data saved in {output_file}")
