@@ -15,7 +15,7 @@ logging.basicConfig(filename="scraping_debug.log", level=logging.DEBUG, format="
 
 # Load ZIP code dataset into a dictionary
 zip_code_dict = {}
-with open(r"C:\Users\ahmty\Desktop\projects\price-pred\filtered_dataset.csv", mode="r", encoding="utf-8-sig") as file:
+with open(r"C:\Users\ahmty\Desktop\projects\price-pred\dataframe\filtered_dataset.csv", mode="r", encoding="utf-8-sig") as file:
     reader = csv.reader(file, delimiter=";")
     next(reader)  # Skip the header
     for row in reader:
