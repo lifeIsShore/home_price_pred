@@ -1,65 +1,116 @@
+import os
+import csv
+import time
+import random
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-import time
-import csv
-import os
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-# Initialize the browser (e.g., Chrome)
-driver = webdriver.Chrome()  # Make sure you have ChromeDriver installed
+# Configure logging
+logging.basicConfig(filename="scraping_debug.log", level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Open the website
-driver.get("https://www.immowelt.de/immobilienpreise/deutschland")  # Replace with the actual website URL
-
-# Function to input zip code, scrape prices, and save to CSV
-def scrape_prices(zip_code, city, state):
-    try:
-        # Locate the input field and input the zip code
-        input_field = driver.find_element(By.CSS_SELECTOR, 'input[aria-label="Suche nach Stadt, Adresse ..."]')
-        input_field.clear()  # Clear any existing text
-        input_field.send_keys(zip_code)  # Input the zip code
-        input_field.send_keys(Keys.RETURN)  # Press Enter
-
-        # Wait for the page to update (adjust the sleep time as needed)
-        time.sleep(5)
-
-        # Scrape the Wohnung price
-        wohnung_price_element = driver.find_element(By.CSS_SELECTOR, 'span.css-2bd70b:nth-of-type(1)')
-        wohnung_price = wohnung_price_element.text.replace('€', '').replace('.', '').replace(',', '.').strip()
-
-        # Scrape the Haus price
-        haus_price_element = driver.find_element(By.CSS_SELECTOR, 'span.css-2bd70b:nth-of-type(2)')
-        haus_price = haus_price_element.text.replace('€', '').replace('.', '').replace(',', '.').strip()
-
-        # Save the data to a CSV file
-        output_file = os.path.join(output_dir, 'scraped_prices.csv')
-        with open(output_file, mode='a', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file, delimiter=';')
-            writer.writerow([zip_code, city, state, wohnung_price, haus_price])
-
-        print(f"Zip Code: {zip_code}, City: {city}, State: {state}, Wohnung: {wohnung_price} €, Haus: {haus_price} €")
-    except Exception as e:
-        print(f"Error processing zip code {zip_code}: {e}")
-
-# Paths
-input_csv = r"C:\Users\ahmty\Desktop\projects\price-pred\german-postcodes.csv"
-output_dir = r"C:\Users\ahmty\Desktop\projects\price-pred\zip-codes-m2\db-postcodes"
-
-# Create or clear the output CSV file and write the header
-output_file = os.path.join(output_dir, 'scraped_prices.csv')
-with open(output_file, mode='w', newline='', encoding='utf-8') as file:
-    writer = csv.writer(file, delimiter=';')
-    writer.writerow(["Zip Code", "City", "State", "Wohnung Price (€)", "Haus Price (€)"])
-
-# Read the input CSV and process each zip code
-with open(input_csv, mode='r', encoding='utf-8') as file:
-    reader = csv.reader(file, delimiter=';')
-    next(reader)  # Skip the header row
+# Load ZIP code dataset into a dictionary
+zip_code_dict = {}
+with open(r"C:\Users\ahmty\Desktop\projects\price-pred\filtered_dataset.csv", mode="r", encoding="utf-8-sig") as file:
+    reader = csv.reader(file, delimiter=";")
+    next(reader)  # Skip the header
     for row in reader:
-        zip_code = row[1]  # Assuming the zip code is in the second column
-        city = row[0]      # Assuming the city is in the first column
-        state = row[2]     # Assuming the state is in the third column
-        scrape_prices(zip_code, city, state)
+        plz, name = row
+        zip_code_dict[plz] = name
 
-# Close the browser
-driver.quit()
+# Function to scrape prices for a given ZIP code
+def scrape_prices(zip_code):
+    options = webdriver.ChromeOptions()
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    
+    driver = webdriver.Chrome(options=options)
+    logging.info(f"Processing ZIP code: {zip_code}")
+
+    try:
+        driver.get("https://www.immowelt.de/immobilienpreise/deutschland")
+        wait = WebDriverWait(driver, 20)  # Increased wait time
+        
+        time.sleep(random.uniform(2, 4))  # Wait before interacting
+        
+        # Wait for input field to be present and interact
+        input_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[aria-label="Suche nach Stadt, Adresse ..."]')))
+        input_field.clear()
+        time.sleep(random.uniform(1, 2))  # Give time before input
+        input_field.send_keys(zip_code)
+        time.sleep(random.uniform(1, 2))  # Slow down interaction
+        input_field.send_keys(Keys.RETURN)
+        logging.info(f"Entered ZIP code {zip_code} and submitted search.")
+
+        # Wait for results page to load
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.css-u7w3u5')))
+        time.sleep(random.uniform(4, 6))  # Extra wait for page to load
+
+        # Extract all price elements
+        retries = 3
+        for attempt in range(retries):
+            try:
+                price_elements = wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'div.css-u7w3u5')))
+                if len(price_elements) >= 4:
+                    break
+                time.sleep(random.uniform(2, 4))  # Retry delay
+            except Exception:
+                logging.warning(f"Retry {attempt+1} for ZIP {zip_code}")
+
+        # Assign values based on order
+        wohnung_min = price_elements[0].text.replace('€', '').replace('.', '').replace(',', '.').strip() if len(price_elements) > 0 else "N/A"
+        wohnung_max = price_elements[1].text.replace('€', '').replace('.', '').replace(',', '.').strip() if len(price_elements) > 1 else "N/A"
+        haus_min = price_elements[2].text.replace('€', '').replace('.', '').replace(',', '.').strip() if len(price_elements) > 2 else "N/A"
+        haus_max = price_elements[3].text.replace('€', '').replace('.', '').replace(',', '.').strip() if len(price_elements) > 3 else "N/A"
+
+        # Retrieve city name from dictionary
+        city = zip_code_dict.get(zip_code, "Unknown")
+
+        return [zip_code, city, wohnung_min, wohnung_max, haus_min, haus_max]
+
+    except Exception as e:
+        logging.error(f"Error processing ZIP {zip_code}: {e}", exc_info=True)
+        return None
+
+    finally:
+        driver.quit()
+        time.sleep(random.uniform(3, 5))  # Increased delay before next request
+
+# **Create 'scraped_data' folder if it doesn't exist**
+scraped_data_folder = r"C:\Users\ahmty\Desktop\projects\price-pred\scraped_data"
+os.makedirs(scraped_data_folder, exist_ok=True)
+
+# Read ZIP codes from dataset
+zip_codes = list(zip_code_dict.keys())  # List of ZIP codes
+
+# **Process in batches of 10**
+batch_size = 10
+max_threads = 5  # 10 simultaneous threads
+
+for batch_index, i in enumerate(range(0, len(zip_codes), batch_size), start=1):
+    batch = zip_codes[i:i+batch_size]  # Get the next 10 ZIP codes
+    results_buffer = []
+
+    with ThreadPoolExecutor(max_workers=max_threads) as executor:
+        futures = {executor.submit(scrape_prices, zip_code): zip_code for zip_code in batch}
+
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results_buffer.append(result)
+                print(f"✅ Scraped: {result}")
+
+    # **Save each batch separately into 'scraped_data' folder**
+    batch_file = os.path.join(scraped_data_folder, f"batch_{batch_index}.csv")
+    with open(batch_file, mode='w', newline='', encoding='utf-8-sig') as file:
+        writer = csv.writer(file, delimiter=';')
+        writer.writerow(["Zip Code", "City", "Wohnung Price min(€)", "Wohnung Price max(€)", "Haus Price min(€)", "Haus Price max(€)"])
+        writer.writerows(results_buffer)
+
+    print(f"✅ Saved Batch {batch_index} to {batch_file}")
+
+print("✅ Scraping completed! Check 'scraping_debug.log' for details.")
