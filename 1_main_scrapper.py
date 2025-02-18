@@ -113,4 +113,4 @@ for batch_index, i in enumerate(range(0, len(zip_codes), batch_size), start=1):
 
     print(f"✅ Saved Batch {batch_index} to {batch_file}")
 
-print("✅ Scraping completed! Check 'scraping_debug.log' for details.")
+print("✅ Scraping completed! Check 'scraping_debug.log' for details.") 
